@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Form Perbaikan Gelang — Unduh PDF Langsung</title>
+
+  <!-- Tailwind (opsional untuk styling cepat) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- html2canvas & jsPDF (untuk render & unduh PDF) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+  <style>
+    /* Kanvas PDF ukuran A4 */
+    #pdfArea {
+      width: 210mm;
+      min-height: 297mm;
+      background: #fff;
+      color: #111;
+    }
+    .box { width: 16px; height: 16px; border: 2px solid #111; display: inline-block; vertical-align: -3px; margin-right: 8px; border-radius: 2px; }
+    .checked { background: #111; }
+
+    /* Frame gambar agar rapi dan tidak “meloncat” */
+    .img-frame {
+      height: 320px;
+      border: 2px dashed #cfcfcf;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden; background: #fafafa;
+    }
+    .img-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+    /* Sembunyikan area PDF (kita render langsung, tanpa preview) */
+    #pdfWrapper { position: fixed; left: -99999px; top: -99999px; }
+    @media print { .no-print { display: none !important; } }
+  </style>
+</head>
+<body class="bg-neutral-100 text-neutral-900">
+  <div class="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
+    <header class="flex items-center justify-between gap-3">
+      <h1 class="text-2xl md:text-3xl font-bold">Form Perbaikan Gelang</h1>
+      <button id="downloadPdf" class="no-print px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-500">
+        Unduh PDF
+      </button>
+    </header>
+
+    <!-- FORM INPUT -->
+    <section class="no-print bg-white rounded-xl shadow p-4 md:p-6 space-y-4">
+      <p class="text-sm text-neutral-600">Isi form lalu klik <b>Unduh PDF</b>. Tidak ada langkah preview.</p>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="space-y-2">
+          <label class="font-medium">Nama</label>
+          <input id="nama" class="w-full border rounded px-3 py-2" placeholder="Nama lengkap" />
+        </div>
+        <div class="space-y-2">
+          <label class="font-medium">Nomor Telepon (WhatsApp)</label>
+          <input id="telepon" class="w-full border rounded px-3 py-2" placeholder="+62..." />
+        </div>
+        <div class="space-y-2 md:col-span-2">
+          <label class="font-medium">Catatan untuk Seller</label>
+          <textarea id="catatan" class="w-full border rounded px-3 py-2" rows="3" placeholder="Tulis catatan (opsional)…"></textarea>
+        </div>
+        <div class="space-y-2 md:col-span-2">
+          <label class="font-medium">Jenis Batu & Jenis Tali (Gold/Silver)</label>
+          <input id="jenisBahan" class="w-full border rounded px-3 py-2" placeholder="Contoh: Carnelian + Tali Gold" />
+        </div>
+        <div class="space-y-2">
+          <label class="font-medium">Jumlah Gelang</label>
+          <input id="jumlah" type="number" min="1" class="w-full border rounded px-3 py-2" value="1" />
+        </div>
+        <div class="space-y-2">
+          <label class="font-medium">Nomor Resi Pengiriman</label>
+          <input id="resi" class="w-full border rounded px-3 py-2" placeholder="(Opsional)" />
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="space-y-2">
+          <label class="font-medium">Jenis Perbaikan</label>
+          <label class="flex items-center gap-2">
+            <input name="perbaikan" id="p_tali" type="radio" class="h-4 w-4" value="Perbaikan Tali (Rp80.000)" checked />
+            <span>Perbaikan Tali — Rp80.000</span>
+          </label>
+          <label class="flex items-center gap-2">
+            <input name="perbaikan" id="p_all" type="radio" class="h-4 w-4" value="Perbaikan All (Rp120.000)" />
+            <span>Perbaikan All — Rp120.000</span>
+          </label>
+        </div>
+
+        <div class="space-y-2 md:col-span-2">
+          <label class="font-medium">Upload Foto Gelang (JPG/PNG, ≤5MB)</label>
+          <input id="foto" type="file" accept="image/*" class="w-full border rounded px-3 py-2" />
+          <div class="img-frame mt-2">
+            <img id="preview" alt="Preview Gelang" class="hidden" />
+            <span id="placeholder" class="text-xs text-neutral-500">Belum ada gambar</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- AREA PDF TERSEMBUNYI (kita isi lalu render) -->
+  <div id="pdfWrapper" aria-hidden="true">
+    <section id="pdfArea" class="rounded-xl p-8">
+      <!-- HEADER PDF -->
+      <div class="grid grid-cols-12 gap-4 items-start border-b pb-6">
+        <div class="col-span-12 md:col-span-7">
+          <h2 class="text-xl md:text-2xl font-bold tracking-wide">PERBAIKAN GELANG</h2>
+          <p class="text-sm leading-relaxed mt-2">
+            Alamat Tujuan:<br/>
+            Kantor Samapura Indonesia<br/>
+            Jl. Batu Belig No.11C, Kerobokan Kelod, Kec. Kuta Utara,<br/>
+            Kabupaten Badung, Bali 80361<br/>
+            CP: +62 813-3929-1848 (Samapura Jewelry)
+          </p>
+        </div>
+        <div class="col-span-12 md:col-span-5 md:text-right">
+          <p class="text-sm"><span class="font-semibold">No. Referensi:</span> <span id="refNo">-</span></p>
+          <p class="text-sm"><span class="font-semibold">Tanggal:</span> <span id="tanggal">-</span></p>
+        </div>
+      </div>
+
+      <!-- BODY PDF -->
+      <div class="grid grid-cols-12 gap-6 mt-6">
+        <!-- KIRI: GAMBAR + RESI -->
+        <div class="col-span-12 md:col-span-6">
+          <h3 class="font-semibold mb-2">Gelang yang Dikirim</h3>
+          <div class="img-frame">
+            <img id="pdfImage" alt="Foto Gelang" />
+          </div>
+          <p class="text-sm mt-3"><span class="font-semibold">Nomor Resi Pengiriman:</span> <span id="pdfResi">-</span></p>
+        </div>
+
+        <!-- KANAN: DATA DIRI -->
+        <div class="col-span-12 md:col-span-6">
+          <h3 class="font-semibold mb-2">Data Diri</h3>
+          <div class="space-y-1.5 text-sm">
+            <p><span class="font-semibold">Nama:</span> <span id="pdfNama">-</span></p>
+            <p><span class="font-semibold">Nomor Telepon:</span> <span id="pdfTelepon">-</span></p>
+            <p><span class="font-semibold">Catatan:</span> <span id="pdfCatatan">-</span></p>
+            <p><span class="font-semibold">Jenis Batu & Tali (Gold/Silver):</span> <span id="pdfJenis">-</span></p>
+            <p><span class="font-semibold">Jumlah Gelang:</span> <span id="pdfJumlah">-</span></p>
+          </div>
+
+          <div class="mt-4">
+            <h4 class="font-semibold">Jenis Perbaikan</h4>
+            <div class="mt-2 space-y-1 text-sm">
+              <div><span id="boxTali" class="box"></span>Perbaikan Tali — Rp80.000</div>
+              <div><span id="boxAll" class="box"></span>Perbaikan All — Rp120.000</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FOOTER CATATAN -->
+      <div class="mt-8 text-xs text-neutral-600 border-t pt-4 leading-relaxed">
+        Mohon cetak lembar ini atau tulis ulang datanya dan masukkan ke dalam paket bersama produk saat dikirim ke alamat kami. Terima kasih.
+      </div>
+
+      <div class="mt-3 text-center text-xs text-neutral-500">
+        © <span id="year"></span> Samapura Jewelry — Form generator.
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const foto = document.getElementById('foto');
+    const preview = document.getElementById('preview');
+    const placeholder = document.getElementById('placeholder');
+    const downloadBtn = document.getElementById('downloadPdf');
+
+    // helper: baca file ke dataURL (untuk embed ke PDF aman dari CORS)
+    const readImageAsDataURL = (file) => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    // preview santai (hanya untuk user view; PDF pakai area tersembunyi)
+    foto.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) {
+        preview.classList.add('hidden'); preview.src = '';
+        placeholder.classList.remove('hidden');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File terlalu besar (maks 5MB).');
+        foto.value = '';
+        preview.classList.add('hidden'); preview.src = '';
+        placeholder.classList.remove('hidden');
+        return;
+      }
+      const dataUrl = await readImageAsDataURL(file);
+      preview.src = dataUrl;
+      preview.classList.remove('hidden');
+      placeholder.classList.add('hidden');
+    });
+
+    const setCheckbox = (el, checked) => el.classList.toggle('checked', !!checked);
+
+    // Klik langsung unduh PDF
+    downloadBtn.addEventListener('click', async () => {
+      try {
+        // Ambil nilai form
+        const nama = document.getElementById('nama').value.trim() || '-';
+        const telepon = document.getElementById('telepon').value.trim() || '-';
+        const catatan = document.getElementById('catatan').value.trim() || '-';
+        const jenis = document.getElementById('jenisBahan').value.trim() || '-';
+        const jumlah = document.getElementById('jumlah').value || '1';
+        const resi = document.getElementById('resi').value.trim() || '-';
+
+        const perbaikanTaliInput = document.getElementById('p_tali');
+        const perbaikanAllInput = document.getElementById('p_all');
+
+        // Isi ke template PDF tersembunyi
+        document.getElementById('pdfNama').textContent = nama;
+        document.getElementById('pdfTelepon').textContent = telepon;
+        document.getElementById('pdfCatatan').textContent = catatan;
+        document.getElementById('pdfJenis').textContent = jenis;
+        document.getElementById('pdfJumlah').textContent = jumlah;
+        document.getElementById('pdfResi').textContent = resi;
+
+        setCheckbox(document.getElementById('boxTali'), perbaikanTaliInput.checked);
+        setCheckbox(document.getElementById('boxAll'), perbaikanAllInput.checked);
+
+        const now = new Date();
+        const ref = 'SP-RPR-' + now.getFullYear().toString().slice(-2)
+          + String(now.getMonth() + 1).padStart(2, '0')
+          + String(now.getDate()).padStart(2, '0')
+          + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+        document.getElementById('refNo').textContent = ref;
+        document.getElementById('tanggal').textContent = now.toLocaleDateString('id-ID');
+        document.getElementById('year').textContent = now.getFullYear();
+
+        // Gambar ke template PDF
+        const file = foto.files?.[0];
+        const pdfImage = document.getElementById('pdfImage');
+        if (file) {
+          const dataUrl = await readImageAsDataURL(file);
+          pdfImage.src = dataUrl;
+        } else {
+          pdfImage.removeAttribute('src');
+        }
+
+        // Render template ke canvas resolusi tinggi & unduh
+        const target = document.getElementById('pdfArea');
+        const canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+        const imgData = canvas.toDataURL('image/png');
+
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const margin = 10;
+        const imgWidth = pageWidth - margin * 2;
+        const imgHeight = canvas.height * imgWidth / canvas.width;
+
+        let y = margin;
+        pdf.addImage(imgData, 'PNG', margin, y, imgWidth, imgHeight);
+
+        // Jika konten lebih dari 1 halaman
+        let heightLeft = imgHeight - (pageHeight - y - margin);
+        let position = y - pageHeight;
+        while (heightLeft > 0) {
+          pdf.addPage();
+          position = position - pageHeight;
+          pdf.addImage(imgData, 'PNG', margin, position + margin, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+        }
+
+        const safeName = (nama || 'Customer').replace(/[^a-z0-9\- ]/gi, '');
+        pdf.save(`Form-Perbaikan-Gelang-${safeName || 'Customer'}.pdf`);
+      } catch (err) {
+        console.error(err);
+        alert('Maaf, terjadi kendala saat membuat PDF. Coba refresh halaman dan ulangi lagi.');
+      }
+    });
+  </script>
+</body>
+</html>
