@@ -5,10 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Form Perbaikan Gelang — Unduh PDF Langsung</title>
 
-  <!-- Tailwind (opsional untuk styling cepat) -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- html2canvas & jsPDF (untuk render & unduh PDF) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
@@ -19,6 +17,8 @@
       min-height: 297mm;
       background: #fff;
       color: #111;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1); /* Tambahkan bayangan untuk efek lembar kertas */
+      margin: 20px auto;
     }
     .box { width: 16px; height: 16px; border: 2px solid #111; display: inline-block; vertical-align: -3px; margin-right: 8px; border-radius: 2px; }
     .checked { background: #111; }
@@ -33,23 +33,36 @@
     }
     .img-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
 
-    /* Sembunyikan area PDF (kita render langsung, tanpa preview) */
-    #pdfWrapper { position: fixed; left: -99999px; top: -99999px; }
+    /* Aturan Display untuk Wrapper PDF */
+    #pdfWrapper {
+      /* Hapus posisi fixed/tersembunyi, gunakan display none/block */
+      display: none;
+      /* Pastikan margin/padding aman saat ditampilkan */
+      padding: 20px 0;
+    }
+    #pdfWrapper.show {
+      display: block;
+    }
+
     @media print { .no-print { display: none !important; } }
   </style>
 </head>
 <body class="bg-neutral-100 text-neutral-900">
   <div class="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
-    <header class="flex items-center justify-between gap-3">
+    <header class="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
       <h1 class="text-2xl md:text-3xl font-bold">Form Perbaikan Gelang</h1>
-      <button id="downloadPdf" class="no-print px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-500">
-        Unduh PDF
-      </button>
+      <div class="flex gap-3">
+        <button id="previewPdf" class="no-print px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-500">
+          Lihat Preview 👁️
+        </button>
+        <button id="downloadPdf" class="no-print px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-500 hidden">
+          Unduh PDF Sekarang
+        </button>
+      </div>
     </header>
 
-    <!-- FORM INPUT -->
     <section class="no-print bg-white rounded-xl shadow p-4 md:p-6 space-y-4">
-      <p class="text-sm text-neutral-600">Isi form lalu klik <b>Unduh PDF</b>. Tidak ada langkah preview.</p>
+      <p class="text-sm text-neutral-600">Isi form lalu klik <b>Lihat Preview</b> untuk melihat hasil PDF sebelum mengunduh.</p>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="space-y-2">
@@ -103,10 +116,8 @@
     </section>
   </div>
 
-  <!-- AREA PDF TERSEMBUNYI (kita isi lalu render) -->
-  <div id="pdfWrapper" aria-hidden="true">
+  <div id="pdfWrapper">
     <section id="pdfArea" class="rounded-xl p-8">
-      <!-- HEADER PDF -->
       <div class="grid grid-cols-12 gap-4 items-start border-b pb-6">
         <div class="col-span-12 md:col-span-7">
           <h2 class="text-xl md:text-2xl font-bold tracking-wide">PERBAIKAN GELANG</h2>
@@ -124,9 +135,7 @@
         </div>
       </div>
 
-      <!-- BODY PDF -->
       <div class="grid grid-cols-12 gap-6 mt-6">
-        <!-- KIRI: GAMBAR + RESI -->
         <div class="col-span-12 md:col-span-6">
           <h3 class="font-semibold mb-2">Gelang yang Dikirim</h3>
           <div class="img-frame">
@@ -135,7 +144,6 @@
           <p class="text-sm mt-3"><span class="font-semibold">Nomor Resi Pengiriman:</span> <span id="pdfResi">-</span></p>
         </div>
 
-        <!-- KANAN: DATA DIRI -->
         <div class="col-span-12 md:col-span-6">
           <h3 class="font-semibold mb-2">Data Diri</h3>
           <div class="space-y-1.5 text-sm">
@@ -156,7 +164,6 @@
         </div>
       </div>
 
-      <!-- FOOTER CATATAN -->
       <div class="mt-8 text-xs text-neutral-600 border-t pt-4 leading-relaxed">
         Mohon cetak lembar ini atau tulis ulang datanya dan masukkan ke dalam paket bersama produk saat dikirim ke alamat kami. Terima kasih.
       </div>
@@ -171,7 +178,10 @@
     const foto = document.getElementById('foto');
     const preview = document.getElementById('preview');
     const placeholder = document.getElementById('placeholder');
+    const previewBtn = document.getElementById('previewPdf'); // Tombol baru untuk preview
     const downloadBtn = document.getElementById('downloadPdf');
+    const pdfWrapper = document.getElementById('pdfWrapper');
+    let generatedPdfData = null; // Variabel untuk menyimpan data canvas/gambar PDF
 
     // helper: baca file ke dataURL (untuk embed ke PDF aman dari CORS)
     const readImageAsDataURL = (file) => new Promise((resolve, reject) => {
@@ -181,7 +191,7 @@
       reader.readAsDataURL(file);
     });
 
-    // preview santai (hanya untuk user view; PDF pakai area tersembunyi)
+    // preview santai (hanya untuk user view)
     foto.addEventListener('change', async (e) => {
       const file = e.target.files?.[0];
       if (!file) {
@@ -200,13 +210,16 @@
       preview.src = dataUrl;
       preview.classList.remove('hidden');
       placeholder.classList.add('hidden');
+      
+      // Sembunyikan tombol download dan preview jika ada perubahan input
+      downloadBtn.classList.add('hidden');
+      pdfWrapper.classList.remove('show');
     });
 
     const setCheckbox = (el, checked) => el.classList.toggle('checked', !!checked);
 
-    // Klik langsung unduh PDF
-    downloadBtn.addEventListener('click', async () => {
-      try {
+    // Fungsi untuk mengisi data ke template PDF
+    const fillPdfTemplate = async () => {
         // Ambil nilai form
         const nama = document.getElementById('nama').value.trim() || '-';
         const telepon = document.getElementById('telepon').value.trim() || '-';
@@ -247,11 +260,38 @@
         } else {
           pdfImage.removeAttribute('src');
         }
+    }
 
-        // Render template ke canvas resolusi tinggi & unduh
+    // Fungsi untuk membuat preview
+    previewBtn.addEventListener('click', async () => {
+        try {
+            await fillPdfTemplate(); // Isi data ke template
+
+            // Tampilkan wrapper preview
+            pdfWrapper.classList.add('show');
+            downloadBtn.classList.remove('hidden');
+            
+            // Opsional: Scroll ke area preview
+            pdfWrapper.scrollIntoView({ behavior: 'smooth' });
+
+        } catch (err) {
+            console.error(err);
+            alert('Maaf, terjadi kendala saat membuat preview. Coba refresh halaman dan ulangi lagi.');
+        }
+    });
+
+    // Fungsi untuk mengunduh PDF (tetap menggunakan mekanisme kompresi JPEG)
+    downloadBtn.addEventListener('click', async () => {
+      try {
+        // Pastikan template sudah terisi (meskipun seharusnya sudah terisi saat preview)
+        await fillPdfTemplate(); 
+
+        // Render template ke canvas resolusi lebih rendah & unduh
         const target = document.getElementById('pdfArea');
-        const canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-        const imgData = canvas.toDataURL('image/png');
+        
+        // Menggunakan scale 1.5 dan JPEG 0.8 untuk ukuran file kecil
+        const canvas = await html2canvas(target, { scale: 1.5, useCORS: true, backgroundColor: '#ffffff' });
+        const imgData = canvas.toDataURL('image/jpeg', 0.8);
 
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
@@ -262,7 +302,8 @@
         const imgHeight = canvas.height * imgWidth / canvas.width;
 
         let y = margin;
-        pdf.addImage(imgData, 'PNG', margin, y, imgWidth, imgHeight);
+        // Gunakan 'JPEG' sebagai tipe data
+        pdf.addImage(imgData, 'JPEG', margin, y, imgWidth, imgHeight);
 
         // Jika konten lebih dari 1 halaman
         let heightLeft = imgHeight - (pageHeight - y - margin);
@@ -270,10 +311,11 @@
         while (heightLeft > 0) {
           pdf.addPage();
           position = position - pageHeight;
-          pdf.addImage(imgData, 'PNG', margin, position + margin, imgWidth, imgHeight);
+          pdf.addImage(imgData, 'JPEG', margin, position + margin, imgWidth, imgHeight);
           heightLeft -= pageHeight;
         }
 
+        const nama = document.getElementById('nama').value.trim();
         const safeName = (nama || 'Customer').replace(/[^a-z0-9\- ]/gi, '');
         pdf.save(`Form-Perbaikan-Gelang-${safeName || 'Customer'}.pdf`);
       } catch (err) {
